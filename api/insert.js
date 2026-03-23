@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     const {
       channel,
       rawdata,
-      created_at='',
+      created_at,
       wbread = 0,
       imei_number,
       type,
@@ -40,7 +40,7 @@ export default async function handler(req, res) {
     await pool.query(query, [
       channel,
       rawdata,
-      created_at || new Date(),
+      created_at || new Date().toISOString().slice(0, 19).replace("T", " "),
       wbread,
       imei_number,
       type,
