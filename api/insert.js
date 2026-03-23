@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     const {
       channel,
       rawdata,
-      created_at,
+      created_at='',
       wbread = 0,
       imei_number,
       type,
