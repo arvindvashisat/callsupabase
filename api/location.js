@@ -20,132 +20,155 @@ export default async function handler(req, res) {
   try {
     let body = req.body;
 
-    // ✅ form-data support
+    // form-data/raw support
     if (!body || Object.keys(body).length === 0) {
       const buffers = [];
       for await (const chunk of req) buffers.push(chunk);
       const raw = Buffer.concat(buffers).toString();
-      body = Object.fromEntries(new URLSearchParams(raw));
+
+      try {
+        body = JSON.parse(raw);
+      } catch (e) {
+        body = Object.fromEntries(new URLSearchParams(raw));
+      }
     }
 
-    // ✅ validation
-    if (!body.user_id) {
+    // ✅ body array hona chahiye
+    if (!Array.isArray(body) || body.length === 0) {
       return res.status(400).json({
         status: false,
-        message: "user_id is required",
+        message: "Request body must be a non-empty array",
       });
     }
 
-    // ✅ IST Date/Time
-    const now = new Date(new Date().getTime() + (5.5 * 60 * 60 * 1000));
-    const formattedDate = now.toISOString().slice(0, 10);
-    const formattedTime = now.toISOString().slice(11, 19);
-    const modify_at = `${formattedDate} ${formattedTime}`;
-
-    // ✅ FULL QUERY
-    const query = `
-    INSERT INTO public.ps_location (
-      user_id, date, time_loc, location_type,
-      latitude, latitude_rep, longitude, longitude_rep,
-      speed, direction, altitude, satellites_no,
-      gsm_signal_strength, battery, steps,
-      terminal_status_hexadecimal, terminal_status,
-      no_of_base_stations, connected_base_station,
-      mcc_country_code, mnc_network_code, mnc_data,
-      no_of_wifi, wifi_data,
-      modify_at, status, address, country, city,
-      no_of_roll_overs, type_of_location,
-      wb_date, wb_time, postdate_wb,
-      "manualUpdate", wb_lat, wb_log
-    )
-    VALUES (
-      $1,$2,$3,$4,
-      $5,$6,$7,$8,
-      $9,$10,$11,$12,
-      $13,$14,$15,
-      $16,$17,
-      $18,$19,
-      $20,$21,$22,
-      $23,$24,
-      $25,$26,$27,$28,$29,
-      $30,$31,
-      $32,$33,$34,
-      $35,$36,$37
-    )
-    `;
-
-    // ✅ SAFE VALUES (NULL handling)
-    if (body.mnc_data !== undefined) {
-        if (typeof body.mnc_data === "object") {
-            body.mnc_data = JSON.stringify(body.mnc_data); // object ya array dono handle
-        } else {
-            body.mnc_data = body.mnc_data || null;
-        }
-    }  
-    if (body.wifi_data !== undefined) {
-        if (typeof body.wifi_data === "object") {
-            body.wifi_data = JSON.stringify(body.wifi_data); // object ya array dono
-        } else {
-            body.wifi_data = body.wifi_data || null;
-        }
+    // Optional safety limit
+    if (body.length > 100) {
+      return res.status(400).json({
+        status: false,
+        message: "Maximum 100 rows allowed per request",
+      });
     }
-    const values = [
-      body.user_id,
 
-      body.date ?? formattedDate,
-      body.time_loc ?? formattedTime,
-      body.location_type ?? null,
+    const placeholders = [];
+    const values = [];
 
-      body.latitude ?? null,
-      body.latitude_rep ?? null,
-      body.longitude ?? null,
-      body.longitude_rep ?? null,
+    body.forEach((row, index) => {
+      if (!row.user_id) {
+        throw new Error(`user_id is required at row ${index + 1}`);
+      }
 
-      body.speed ?? null,
-      body.direction ?? null,
-      body.altitude ?? null,
-      body.satellites_no ?? null,
+      // IST time
+      const now = new Date(new Date().getTime() + (5.5 * 60 * 60 * 1000));
+      const formattedDate = now.toISOString().slice(0, 10);
+      const formattedTime = now.toISOString().slice(11, 19);
+      const modify_at = `${formattedDate} ${formattedTime}`;
 
-      body.gsm_signal_strength ?? null,
-      body.battery ?? null,
-      body.steps ?? null,
+      // object/array ko safely string banao
+      let mnc_data = row.mnc_data ?? null;
+      let wifi_data = row.wifi_data ?? null;
 
-      body.terminal_status_hexadecimal ?? null,
-      body.terminal_status ?? null,
+      if (typeof mnc_data === "object") {
+        mnc_data = JSON.stringify(mnc_data);
+      }
 
-      body.no_of_base_stations ?? null,
-      body.connected_base_station ?? null,
+      if (typeof wifi_data === "object") {
+        wifi_data = JSON.stringify(wifi_data);
+      }
 
-      body.mcc_country_code ?? null,
-      body.mnc_network_code ?? null,
-      body.mnc_data ?? null,
-      
-      body.no_of_wifi ?? null,
-      body.wifi_data ?? null,
+      const base = index * 37;
 
-      body.modify_at ?? modify_at,
-      body.status ?? null,
-      body.address ?? null,
-      body.country ?? null,
-      body.city ?? null,
+      placeholders.push(`(
+        $${base + 1}, $${base + 2}, $${base + 3}, $${base + 4},
+        $${base + 5}, $${base + 6}, $${base + 7}, $${base + 8},
+        $${base + 9}, $${base + 10}, $${base + 11}, $${base + 12},
+        $${base + 13}, $${base + 14}, $${base + 15},
+        $${base + 16}, $${base + 17},
+        $${base + 18}, $${base + 19},
+        $${base + 20}, $${base + 21}, $${base + 22},
+        $${base + 23}, $${base + 24},
+        $${base + 25}, $${base + 26}, $${base + 27}, $${base + 28}, $${base + 29},
+        $${base + 30}, $${base + 31},
+        $${base + 32}, $${base + 33}, $${base + 34},
+        $${base + 35}, $${base + 36}, $${base + 37}
+      )`);
 
-      body.no_of_roll_overs ?? null,
-      body.type_of_location ?? null,
+      values.push(
+        row.user_id,
 
-      body.wb_date ?? null,
-      body.wb_time ?? null,
-      body.postdate_wb ?? null,
+        row.date ?? formattedDate,
+        row.time_loc ?? formattedTime,
+        row.location_type ?? null,
 
-      body.manualUpdate ?? 0,
-      body.wb_lat ?? null,
-      body.wb_log ?? null,
-    ];
+        row.latitude ?? null,
+        row.latitude_rep ?? null,
+        row.longitude ?? null,
+        row.longitude_rep ?? null,
+
+        row.speed ?? null,
+        row.direction ?? null,
+        row.altitude ?? null,
+        row.satellites_no ?? null,
+
+        row.gsm_signal_strength ?? null,
+        row.battery ?? null,
+        row.steps ?? null,
+
+        row.terminal_status_hexadecimal ?? null,
+        row.terminal_status ?? null,
+
+        row.no_of_base_stations ?? null,
+        row.connected_base_station ?? null,
+
+        row.mcc_country_code ?? null,
+        row.mnc_network_code ?? null,
+        mnc_data,
+
+        row.no_of_wifi ?? null,
+        wifi_data,
+
+        row.modify_at ?? modify_at,
+        row.status ?? null,
+        row.address ?? null,
+        row.country ?? null,
+        row.city ?? null,
+
+        row.no_of_roll_overs ?? null,
+        row.type_of_location ?? null,
+
+        row.wb_date ?? null,
+        row.wb_time ?? null,
+        row.postdate_wb ?? null,
+
+        row.manualUpdate ?? 0,
+        row.wb_lat ?? null,
+        row.wb_log ?? null
+      );
+    });
+
+    const query = `
+      INSERT INTO public.ps_location (
+        user_id, date, time_loc, location_type,
+        latitude, latitude_rep, longitude, longitude_rep,
+        speed, direction, altitude, satellites_no,
+        gsm_signal_strength, battery, steps,
+        terminal_status_hexadecimal, terminal_status,
+        no_of_base_stations, connected_base_station,
+        mcc_country_code, mnc_network_code, mnc_data,
+        no_of_wifi, wifi_data,
+        modify_at, status, address, country, city,
+        no_of_roll_overs, type_of_location,
+        wb_date, wb_time, postdate_wb,
+        "manualUpdate", wb_lat, wb_log
+      )
+      VALUES ${placeholders.join(",")}
+    `;
 
     await pool.query(query, values);
 
     return res.status(200).json({
       status: true,
-      message: "Location inserted successfully",
+      message: `${body.length} location rows inserted successfully`,
+      inserted_count: body.length,
     });
 
   } catch (err) {
