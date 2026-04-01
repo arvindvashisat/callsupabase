@@ -75,6 +75,20 @@ export default async function handler(req, res) {
     `;
 
     // ✅ SAFE VALUES (NULL handling)
+    if (body.mnc_data !== undefined) {
+        if (typeof body.mnc_data === "object") {
+            body.mnc_data = JSON.stringify(body.mnc_data); // object ya array dono handle
+        } else {
+            body.mnc_data = body.mnc_data || null;
+        }
+    }  
+    if (body.wifi_data !== undefined) {
+        if (typeof body.wifi_data === "object") {
+            body.wifi_data = JSON.stringify(body.wifi_data); // object ya array dono
+        } else {
+            body.wifi_data = body.wifi_data || null;
+        }
+    }
     const values = [
       body.user_id,
 
@@ -105,7 +119,7 @@ export default async function handler(req, res) {
       body.mcc_country_code ?? null,
       body.mnc_network_code ?? null,
       body.mnc_data ?? null,
-
+      
       body.no_of_wifi ?? null,
       body.wifi_data ?? null,
 
